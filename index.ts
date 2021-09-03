@@ -1,60 +1,61 @@
 import type {
     Loader,
     OnLoadArgs,
+    OnLoadResult,
     OnResolveArgs,
-    PluginBuild,
+    Plugin
 } from "https://deno.land/x/esbuild@v0.12.25/mod.d.ts";
 
-const name = "http-fetch";
-let options: Options = {};
+const namespace = "http-import";
+
 export type Options = {
     allowPrivateModules?: boolean;
 };
 
-const setup = ({ onResolve, onLoad }: PluginBuild) => {
+export const httpImports = (options: Options = {}): Plugin => ({
+    name: namespace,
+    setup(build) {
 
-    onResolve({ filter: /^https:\/\// }, resolveFile);
-    onResolve({ filter: /.*/, namespace: "http-fetch" }, resolveUrl);
-    onLoad({ filter: /.*/, namespace: "http-fetch" }, loadSource);
-};
+        build.onResolve({ filter: /^https:\/\// }, ({ path }: OnResolveArgs) => ({
+            path: path,
+            namespace,
+        }));
 
-const resolveFile = ({ path }: OnResolveArgs) => ({
-    path: path,
-    namespace: "http-fetch",
-});
+        build.onResolve({ filter: /.*/, namespace }, ({ path, importer }: OnResolveArgs) => ({
+            path: new URL(path, importer).toString(),
+            namespace
+        }));
 
-const resolveUrl = ({ path, importer }: OnResolveArgs) => ({
-    path: new URL(path, importer).href,
-    namespace: "http-fetch",
-});
+        build.onLoad({ filter: /.*/, namespace }, async ({ path }: OnLoadArgs): Promise<OnLoadResult> => {
+            const headers = new Headers();
+            if (options.allowPrivateModules) {
+                appendAuthHeaderFromPrivateModules(path, headers);
+            }
 
-const loadSource = async ({ path }: OnLoadArgs) => {
-    const headers = new Headers();
-    if (options.allowPrivateModules) {
-        appendAuthHeaderFromPrivateModules(path, headers);
+            const source = await fetch(path, { headers });
+
+            if (!source.ok) {
+                const message = `GET ${path} failed: status ${source.status}`;
+                throw new Error(message);
+            }
+
+            let contents = await source.text();
+            const pattern = /\/\/# sourceMappingURL=(\S+)/;
+            const match = contents.match(pattern);
+            if (match) {
+                const url = new URL(match[ 1 ], source.url);
+                const dataurl = await loadMap(url, headers);
+                const comment = `//# sourceMappingURL=${dataurl}`;
+                contents = contents.replace(pattern, comment);
+            }
+            const { pathname } = new URL(path);
+            const loader = (pathname.match(/[^.]+$/)?.[ 0 ]) as (Loader | undefined);
+
+            return { contents, loader };
+        });
     }
-    const source = await fetch(path, { headers });
+})
 
-    if (!source.ok) {
-        const message = `GET ${path} failed: status ${source.status}`;
-        throw new Error(message);
-    }
-
-    let contents = await source.text();
-    const pattern = /\/\/# sourceMappingURL=(\S+)/;
-    const match = contents.match(pattern);
-    if (match) {
-        const url = new URL(match[ 1 ], source.url);
-        const dataurl = await loadMap(url, headers);
-        const comment = `//# sourceMappingURL=${dataurl}`;
-        contents = contents.replace(pattern, comment);
-    }
-
-    const { pathname } = new URL(source.url);
-    const loader = (pathname.match(/[^.]+$/)?.[ 0 ]) as (Loader | undefined);
-
-    return { contents, loader };
-};
 
 const loadMap = async (url: URL, headers: Headers) => {
     const map = await fetch(url.href, { headers });
@@ -68,19 +69,22 @@ const loadMap = async (url: URL, headers: Headers) => {
     });
 };
 
-export default (paraOptions: Options = {}) => {
-    options = paraOptions;
-    return { name, setup };
-};
-
 function appendAuthHeaderFromPrivateModules(path: string, headers: Headers) {
-    const env = Deno.env.get("DENO_AUTH_TOKENS");
+    const env = Deno.env.get("DENO_AUTH_TOKENS")?.trim();
     if (!env) return;
-    const denoAuthToken = env.split(";").find(x => new URL(x.split("@").at(-1)!).hostname == new URL(path).hostname);
-    if (!denoAuthToken) return;
 
-    if (denoAuthToken.includes(":"))
-        headers.append("Authorization", `Basic ${btoa(denoAuthToken.split('@')[ 0 ])}`);
-    else
-        headers.append("Authorization", `Bearer ${denoAuthToken.split('@')[ 0 ]}`);
+    try {
+        const denoAuthToken = env.split(";").find(x => new URL("https://" + x.split("@").at(-1)!).hostname == new URL(path).hostname);
+
+        if (!denoAuthToken) return;
+
+        if (denoAuthToken.includes(":"))
+            headers.append("Authorization", `Basic ${btoa(denoAuthToken.split('@')[ 0 ])}`);
+        else
+            headers.append("Authorization", `Bearer ${denoAuthToken.split('@')[ 0 ]}`);
+
+    } catch (error) {
+        console.log(error, env);
+        return;
+    }
 }
