@@ -10,6 +10,7 @@ const namespace = "http-import";
 
 export type Options = {
     allowPrivateModules?: boolean;
+    defaultToJavascriptIfNothingElseFound?: boolean;
 };
 
 export const httpImports = (options: Options = {}): Plugin => ({
@@ -50,7 +51,8 @@ export const httpImports = (options: Options = {}): Plugin => ({
             }
             const { pathname } = new URL(path);
             const loader = (pathname.match(/[^.]+$/)?.[ 0 ]) as (Loader | undefined);
-
+            if (options.defaultToJavascriptIfNothingElseFound)
+                return { contents, loader: loader ?? "js" };
             return { contents, loader };
         });
     }
