@@ -7,7 +7,7 @@ import type {
 } from "https://deno.land/x/esbuild@v0.12.25/mod.d.ts";
 
 const namespace = "http-import";
-
+const possibleLoaders: Loader[] = [ 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'text', 'base64', 'file', 'dataurl', 'binary', 'default' ];
 export type Options = {
     allowPrivateModules?: boolean;
     defaultToJavascriptIfNothingElseFound?: boolean;
@@ -51,8 +51,9 @@ export const httpImports = (options: Options = {}): Plugin => ({
             }
             const { pathname } = new URL(path);
             const loader = (pathname.match(/[^.]+$/)?.[ 0 ]) as (Loader | undefined);
-            if (options.defaultToJavascriptIfNothingElseFound)
-                return { contents, loader: loader ?? "js" };
+            if (options.defaultToJavascriptIfNothingElseFound) {
+                return { contents, loader: loader && possibleLoaders.includes(loader) ? loader : "js" };
+            }
             return { contents, loader };
         });
     }
