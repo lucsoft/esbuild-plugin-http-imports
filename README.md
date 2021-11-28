@@ -9,7 +9,7 @@ Maintained by lucsoft
 ```js
 // test/index.js
 import { build, stop } from "https://deno.land/x/esbuild@v0.14.0/mod.js";
-import { httpImports } from "https://deno.land/x/esbuild_plugin_http_imports@v1.1.4/index.js";
+import { httpImports } from "https://deno.land/x/esbuild_plugin_http_imports@v1.2.0/index.js";
 
 let { outputFiles } = await build({
   bundle: true,
