@@ -8,6 +8,7 @@ import type {
 
 const namespace = "http-import";
 const possibleLoaders: Loader[] = [ 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'text', 'base64', 'file', 'dataurl', 'binary', 'default' ];
+const binaryLoaders: Loader[] = [ 'binary', 'file', "dataurl" ];
 const responseCache: { [ path in string ]: Response } = {}
 export type Options = {
     allowPrivateModules?: boolean;
@@ -21,7 +22,7 @@ export const httpImports = (options: Options = {}): Plugin => ({
     name: namespace,
     setup(build) {
         build.onResolve({ filter: /^https:\/\// }, ({ path }: OnResolveArgs) => ({ path, namespace }));
-        build.onResolve({ filter: /.*/, namespace }, ({ path, importer }: OnResolveArgs) => ({ path: new URL(path, importer).toString(), namespace }));
+        build.onResolve({ filter: /.*/, namespace }, ({ path, importer }: OnResolveArgs) => ({ path: new URL(path.replace(/\?.*/, ""), importer).toString(), namespace }));
         build.onLoad({ filter: /.*/, namespace }, async ({ path }: OnLoadArgs): Promise<OnLoadResult> => {
             const headers = new Headers();
             if (options.allowPrivateModules) appendAuthHeaderFromPrivateModules(path, headers);
@@ -34,10 +35,16 @@ export const httpImports = (options: Options = {}): Plugin => ({
 
             // Find perfect Loader for extension
             const loader = build.initialOptions.loader?.[ `.${pathname.split(".").at(-1)}` ] ?? (pathname.match(/[^.]+$/)?.[ 0 ]) as (Loader | undefined);
-            if (options.defaultToJavascriptIfNothingElseFound) {
-                return { contents, loader: loader && possibleLoaders.includes(loader) ? loader : "js" };
-            }
-            return { contents, loader };
+            return {
+                contents: binaryLoaders.includes(loader ?? "default")
+                    ? new Uint8Array(await source.clone().arrayBuffer())
+                    : contents,
+                loader: options.defaultToJavascriptIfNothingElseFound
+                    ? (loader && possibleLoaders.includes(loader)
+                        ? loader
+                        : "js")
+                    : loader
+            };
         });
     }
 })
