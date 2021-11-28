@@ -8,49 +8,32 @@ import type {
 
 const namespace = "http-import";
 const possibleLoaders: Loader[] = [ 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'text', 'base64', 'file', 'dataurl', 'binary', 'default' ];
+const responseCache: { [ path in string ]: Response } = {}
 export type Options = {
     allowPrivateModules?: boolean;
     defaultToJavascriptIfNothingElseFound?: boolean;
+    disableCache?: boolean;
+    onCacheMiss?: (path: string) => void;
+    onCacheHit?: (path: string) => void;
 };
 
 export const httpImports = (options: Options = {}): Plugin => ({
     name: namespace,
     setup(build) {
-
-        build.onResolve({ filter: /^https:\/\// }, ({ path }: OnResolveArgs) => ({
-            path,
-            namespace,
-        }));
-
-        build.onResolve({ filter: /.*/, namespace }, ({ path, importer }: OnResolveArgs) => ({
-            path: new URL(path, importer).toString(),
-            namespace
-        }));
-
+        build.onResolve({ filter: /^https:\/\// }, ({ path }: OnResolveArgs) => ({ path, namespace }));
+        build.onResolve({ filter: /.*/, namespace }, ({ path, importer }: OnResolveArgs) => ({ path: new URL(path, importer).toString(), namespace }));
         build.onLoad({ filter: /.*/, namespace }, async ({ path }: OnLoadArgs): Promise<OnLoadResult> => {
             const headers = new Headers();
-            if (options.allowPrivateModules) {
-                appendAuthHeaderFromPrivateModules(path, headers);
-            }
+            if (options.allowPrivateModules) appendAuthHeaderFromPrivateModules(path, headers);
 
-            const source = await fetch(path, { headers });
-
-            if (!source.ok) {
-                const message = `GET ${path} failed: status ${source.status}`;
-                throw new Error(message);
-            }
-
-            let contents = await source.text();
-            const pattern = /\/\/# sourceMappingURL=(\S+)/;
-            const match = contents.match(pattern);
-            if (match) {
-                const url = new URL(match[ 1 ], source.url);
-                const dataurl = await loadMap(url, headers);
-                const comment = `//# sourceMappingURL=${dataurl}`;
-                contents = contents.replace(pattern, comment);
-            }
+            const source = await useResponseCacheElseLoad(options, path, headers);
+            if (!source.ok) throw new Error(`GET ${path} failed: status ${source.status}`);
+            let contents = await source.clone().text();
+            contents = await handeSourceMaps(contents, source, headers);
             const { pathname } = new URL(path);
-            const loader = (pathname.match(/[^.]+$/)?.[ 0 ]) as (Loader | undefined);
+
+            // Find perfect Loader for extension
+            const loader = build.initialOptions.loader?.[ `.${pathname.split(".").at(-1)}` ] ?? (pathname.match(/[^.]+$/)?.[ 0 ]) as (Loader | undefined);
             if (options.defaultToJavascriptIfNothingElseFound) {
                 return { contents, loader: loader && possibleLoaders.includes(loader) ? loader : "js" };
             }
@@ -72,12 +55,33 @@ const loadMap = async (url: URL, headers: Headers) => {
     });
 };
 
+async function useResponseCacheElseLoad(options: Options, path: string, headers: Headers): Promise<Response> {
+    if (responseCache[ path ] && !options.disableCache) {
+        options.onCacheHit?.(path);
+        return responseCache[ path ];
+    }
+    options.onCacheMiss?.(path);
+    return responseCache[ path ] = await fetch(path.split("?")[ 0 ], { headers });
+}
+
+async function handeSourceMaps(contents: string, source: Response, headers: Headers) {
+    const pattern = /\/\/# sourceMappingURL=(\S+)/;
+    const match = contents.match(pattern);
+    if (match) {
+        const url = new URL(match[ 1 ], source.url);
+        const dataurl = await loadMap(url, headers);
+        const comment = `//# sourceMappingURL=${dataurl}`;
+        return contents.replace(pattern, comment);
+    }
+    return contents;
+}
+
 function appendAuthHeaderFromPrivateModules(path: string, headers: Headers) {
     const env = Deno.env.get("DENO_AUTH_TOKENS")?.trim();
     if (!env) return;
 
     try {
-        const denoAuthToken = env.split(";").find(x => new URL("https://" + x.split("@").at(-1)!).hostname == new URL(path).hostname);
+        const denoAuthToken = env.split(";").find(x => new URL(`https://${x.split("@").at(-1)!}`).hostname == new URL(path).hostname);
 
         if (!denoAuthToken) return;
 
