@@ -1,15 +1,18 @@
 # esbuild-plugin-http-imports
 
+> **NOTE**: If you want an extended esbuild development server go to https://deno.land/x/esbuild_serve 
+
 An esbuild plugin that resolves http(s) modules, for use with browsers and Deno.
 
 Maintained by lucsoft
 
+
 ## Example
 
-```js
+```ts
 // test/index.js
-import { build, stop } from "https://deno.land/x/esbuild@v0.14.0/mod.js";
-import { httpImports } from "https://deno.land/x/esbuild_plugin_http_imports@v1.2.0/index.js";
+import { build, stop } from "https://deno.land/x/esbuild/mod.js";
+import { httpImports } from "https://deno.land/x/esbuild_plugin_http_imports/index.ts";
 
 let { outputFiles } = await build({
   bundle: true,
