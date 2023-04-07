@@ -1,16 +1,16 @@
-import {build, stop} from 'https://deno.land/x/esbuild@v0.12.1/mod.js'
-import httpFetch from '../http-fetch.js'
+import { build, stop } from "https://deno.land/x/esbuild@v0.17.15/mod.js";
+import { httpImports } from "../index.ts";
 
-let {outputFiles} = await build({
+let { outputFiles } = await build({
   bundle: true,
-  entryPoints: ['test/hello.jsx'],
-  jsxFactory: 'h',
-  plugins: [httpFetch],
-  write: false
-})
+  entryPoints: ["test/hello.jsx"],
+  jsxFactory: "h",
+  plugins: [httpImports({ defaultToJavascriptIfNothingElseFound: true })],
+  write: false,
+});
 
-eval(outputFiles[0].text)
+eval(outputFiles[0].text);
 // expected: <h1>Hello, world!</h1>
 // actual: <h1>Hello, world!</h1>
 
-stop()
+stop();
