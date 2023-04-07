@@ -68,7 +68,7 @@ async function useResponseCacheElseLoad(options: Options, path: string, headers:
         return responseCache[ path ];
     }
     options.onCacheMiss?.(path);
-    return responseCache[ path ] = await fetch(path.split("?")[ 0 ], { headers });
+    return responseCache[ path ] = await fetch(path, { headers });
 }
 
 async function handeSourceMaps(contents: string, source: Response, headers: Headers) {
