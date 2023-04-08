@@ -1,12 +1,12 @@
 import { build, stop } from "https://deno.land/x/esbuild@v0.17.15/mod.js";
-import { httpImports } from '../index.ts';
+import { httpImports } from "../index.ts";
 
-const { outputFiles } = await build({
+let { outputFiles } = await build({
   bundle: true,
-  entryPoints: [ 'test/hello.jsx' ],
-  jsxFactory: 'h',
-  plugins: [ httpImports() ],
-  write: false
+  entryPoints: [ "test/hello.jsx" ],
+  jsxFactory: "h",
+  plugins: [ httpImports({ defaultToJavascriptIfNothingElseFound: true }) ],
+  write: false,
 });
 
 eval(outputFiles[ 0 ].text);

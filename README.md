@@ -2,11 +2,14 @@
 
 An esbuild plugin that resolves http(s) modules with persistent caching, for use with Deno.
 
+> **NOTE**: If you want an extended esbuild development server go to https://deno.land/x/esbuild_serve
+
 > This Plugin uses x/esbuild_serve/features/httpImports.ts for its Implementation. If you have any Bugs please report it at esbuild_serve.
+
 
 ## Example
 
-```js
+```ts
 // test/index.js
 import { build, stop } from "https://deno.land/x/esbuild@/mod.js";
 import { httpImports } from "https://deno.land/x/esbuild_plugin_http_imports@/index.ts";
